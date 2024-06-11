@@ -215,6 +215,10 @@ mfxStatus QSV_Encoder_Internal::InitParams(qsv_param_t *pParams,
 	m_mfxEncParams.mfx.FrameInfo.CropH = pParams->nHeight;
 	m_mfxEncParams.mfx.GopRefDist = pParams->nbFrames + 1;
 
+#if 0
+	m_mfxEncParams.mfx.NumSlice = 4;
+#endif
+
 	mfxPlatform platform;
 	MFXVideoCORE_QueryPlatform(m_session, &platform);
 
@@ -293,16 +297,60 @@ mfxStatus QSV_Encoder_Internal::InitParams(qsv_param_t *pParams,
 	}
 	PRAGMA_WARN_POP
 
+#if 0
+	for(unsigned int i=0; i<TILE_NUM; i++){
+		memset(&m_inputStream[i], 0, sizeof(mfxVPPCompInputStream));
+		m_inputStream[i].TileId = i;
+		m_inputStream[i].DstX = i * (MSDK_ALIGN16(pParams->nWidth) / TILE_COLUMN);
+		m_inputStream[i].DstY = i * (MSDK_ALIGN16(pParams->nHeight) / TILE_ROW);
+		m_inputStream[i].DstW = (MSDK_ALIGN16(pParams->nWidth) / TILE_COLUMN);
+		m_inputStream[i].DstH = (MSDK_ALIGN16(pParams->nHeight) / TILE_ROW);
+	}
+
+	memset(&m_vpp, 0, sizeof(m_vpp));
+	m_vpp.Header.BufferId = MFX_EXTBUFF_VPP_COMPOSITE;
+	m_vpp.Header.BufferSz = sizeof(mfxExtVPPComposite);
+	m_vpp.Y = 16;
+	m_vpp.U = 128;
+	m_vpp.V = 128;
+	m_vpp.NumTiles = 1;
+	m_vpp.NumInputStream = TILE_NUM;
+	m_vpp.InputStream = m_inputStream;
+	extendedBuffers.push_back((mfxExtBuffer*)&m_vpp);
+
+
+	memset(&m_tiles, 0, sizeof(m_tiles));
+	m_tiles.Header.BufferId = MFX_EXTBUFF_HEVC_TILES;
+	m_tiles.Header.BufferSz = sizeof(mfxExtHEVCTiles);
+	m_tiles.NumTileRows = 1;
+	m_tiles.NumTileColumns = 1;
+	extendedBuffers.push_back((mfxExtBuffer *)&m_tiles);
+#endif
+
+
 	// LA VDENC case for newer platform, works only under CBR / VBR
 	if (pParams->nRateControl == MFX_RATECONTROL_CBR ||
-	    pParams->nRateControl == MFX_RATECONTROL_VBR) {
+		pParams->nRateControl == MFX_RATECONTROL_VBR) {
 		if (pParams->nLADEPTH &&
 		    m_mfxEncParams.mfx.LowPower == MFX_CODINGOPTION_ON) {
 			m_co2.LookAheadDepth = pParams->nLADEPTH;
 		}
 	}
 
+#if 0
+	m_co2.MaxSliceSize = 5;
+#endif
+
 	extendedBuffers.push_back((mfxExtBuffer *)&m_co2);
+
+	if (!ENABLE_GPB) {
+		memset(&m_co3, 0, sizeof(mfxExtCodingOption3));
+		m_co3.Header.BufferId = MFX_EXTBUFF_CODING_OPTION3;
+		m_co3.Header.BufferSz = sizeof(m_co3);
+
+		m_co3.GPB = MFX_CODINGOPTION_OFF;
+		extendedBuffers.push_back((mfxExtBuffer *)&m_co3);
+	}
 
 	if (codec == QSV_CODEC_HEVC) {
 		if ((pParams->nWidth & 15) || (pParams->nHeight & 15)) {
