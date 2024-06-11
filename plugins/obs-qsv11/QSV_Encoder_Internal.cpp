@@ -215,8 +215,8 @@ mfxStatus QSV_Encoder_Internal::InitParams(qsv_param_t *pParams,
 	m_mfxEncParams.mfx.FrameInfo.CropH = pParams->nHeight;
 	m_mfxEncParams.mfx.GopRefDist = pParams->nbFrames + 1;
 
-#if 0
-	m_mfxEncParams.mfx.NumSlice = 4;
+#if 1
+	m_mfxEncParams.mfx.NumSlice = NUM_SLICE;
 #endif
 
 	mfxPlatform platform;
