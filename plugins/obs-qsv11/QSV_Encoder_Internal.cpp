@@ -213,7 +213,7 @@ mfxStatus QSV_Encoder_Internal::InitParams(qsv_param_t *pParams,
 	m_mfxEncParams.mfx.FrameInfo.CropY = 0;
 	m_mfxEncParams.mfx.FrameInfo.CropW = pParams->nWidth;
 	m_mfxEncParams.mfx.FrameInfo.CropH = pParams->nHeight;
-	m_mfxEncParams.mfx.GopRefDist = pParams->nbFrames + 1;
+	m_mfxEncParams.mfx.GopRefDist =  pParams->nbFrames + 1;
 
 #if 1
 	m_mfxEncParams.mfx.NumSlice = NUM_SLICE;
@@ -263,11 +263,19 @@ mfxStatus QSV_Encoder_Internal::InitParams(qsv_param_t *pParams,
 	}
 
 	m_mfxEncParams.AsyncDepth = pParams->nAsyncDepth;
+
+	if (ENABLE_I_FRAME_ONLY) {
+		m_mfxEncParams.mfx.GopPicSize = 1;
+		m_mfxEncParams.mfx.GopRefDist = 1;
+		m_mfxEncParams.mfx.IdrInterval = 0;
+	} else {
+
 	m_mfxEncParams.mfx.GopPicSize =
 		(pParams->nKeyIntSec)
 			? (mfxU16)(pParams->nKeyIntSec * pParams->nFpsNum /
 				   (float)pParams->nFpsDen)
 			: 240;
+	}
 
 	memset(&m_co2, 0, sizeof(mfxExtCodingOption2));
 	m_co2.Header.BufferId = MFX_EXTBUFF_CODING_OPTION2;
@@ -279,6 +287,10 @@ mfxStatus QSV_Encoder_Internal::InitParams(qsv_param_t *pParams,
 
 	if (pParams->nbFrames > 1)
 		m_co2.BRefType = MFX_B_REF_PYRAMID;
+
+	if (!ENABLE_DEBLOCKING) {
+		m_co2.DisableDeblockingIdc = MFX_CODINGOPTION_ON;
+	}
 
 	PRAGMA_WARN_PUSH
 	PRAGMA_WARN_DEPRECATION
@@ -347,22 +359,31 @@ mfxStatus QSV_Encoder_Internal::InitParams(qsv_param_t *pParams,
 		memset(&m_co3, 0, sizeof(mfxExtCodingOption3));
 		m_co3.Header.BufferId = MFX_EXTBUFF_CODING_OPTION3;
 		m_co3.Header.BufferSz = sizeof(m_co3);
-
 		m_co3.GPB = MFX_CODINGOPTION_OFF;
 		extendedBuffers.push_back((mfxExtBuffer *)&m_co3);
 	}
 
 	if (codec == QSV_CODEC_HEVC) {
+		bool ext_param = false;
+		memset(&m_ExtHEVCParam, 0, sizeof(m_ExtHEVCParam));
+		m_ExtHEVCParam.Header.BufferId = MFX_EXTBUFF_HEVC_PARAM;
+		m_ExtHEVCParam.Header.BufferSz = sizeof(m_ExtHEVCParam);
+
 		if ((pParams->nWidth & 15) || (pParams->nHeight & 15)) {
-			memset(&m_ExtHEVCParam, 0, sizeof(m_ExtHEVCParam));
-			m_ExtHEVCParam.Header.BufferId = MFX_EXTBUFF_HEVC_PARAM;
-			m_ExtHEVCParam.Header.BufferSz = sizeof(m_ExtHEVCParam);
 			m_ExtHEVCParam.PicWidthInLumaSamples = pParams->nWidth;
-			m_ExtHEVCParam.PicHeightInLumaSamples =
-				pParams->nHeight;
-			extendedBuffers.push_back(
-				(mfxExtBuffer *)&m_ExtHEVCParam);
+			m_ExtHEVCParam.PicHeightInLumaSamples = pParams->nHeight;
+			ext_param = true;
 		}
+		if (!ENABLE_SAO) {
+			m_ExtHEVCParam.SampleAdaptiveOffset = MFX_SAO_DISABLE;
+			ext_param = true;
+		}
+
+		if (ext_param){
+			extendedBuffers.push_back((mfxExtBuffer *)&m_ExtHEVCParam);
+		}
+
+
 	}
 
 	constexpr uint32_t pixelcount_4k = 3840 * 2160;
