@@ -1,7 +1,7 @@
 #include "vishare-service.h"
 
-const char *audio_codecs[] = {"opus", nullptr};
-const char *video_codecs[] = {"h264", "hevc", "av1", nullptr};
+const char *audio_codecs[] = {"aac", "opus", nullptr};
+const char *video_codecs[] = {"hevc", nullptr};
 
 VISHAREService::VISHAREService(obs_data_t *settings, obs_service_t *)
 	: server(),

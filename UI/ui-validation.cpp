@@ -64,6 +64,7 @@ UIValidation::StreamSettingsConfirmation(QWidget *parent, OBSService service)
 
 	char const *serviceType = obs_service_get_type(service);
 	bool isCustomService = (strcmp(serviceType, "rtmp_custom") == 0);
+	bool isVishare = (strcmp(serviceType, "vishare_custom") == 0);
 
 	char const *streamUrl = obs_service_get_connect_info(
 		service, OBS_SERVICE_CONNECT_INFO_SERVER_URL);
@@ -74,7 +75,9 @@ UIValidation::StreamSettingsConfirmation(QWidget *parent, OBSService service)
 	bool streamKeyMissing = !(streamKey != NULL && streamKey[0] != '\0');
 
 	QString msg;
-	if (!isCustomService && streamUrlMissing && streamKeyMissing) {
+	if (isVishare && streamUrlMissing){
+		msg = QTStr("Basic.Settings.Stream.MissingUrl");
+	} else if (!isCustomService && streamUrlMissing && streamKeyMissing) {
 		msg = QTStr("Basic.Settings.Stream.MissingUrlAndApiKey");
 	} else if (!isCustomService && streamKeyMissing) {
 		msg = QTStr("Basic.Settings.Stream.MissingStreamKey");

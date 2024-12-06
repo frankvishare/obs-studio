@@ -124,6 +124,7 @@ void OBSBasicSettings::LoadStream1Settings()
 	bool is_rtmp_custom = (strcmp(type, "rtmp_custom") == 0);
 	bool is_rtmp_common = (strcmp(type, "rtmp_common") == 0);
 	bool is_whip = (strcmp(type, "whip_custom") == 0);
+	bool is_vishare = (strcmp(type, "vishare_custom") == 0);
 
 	loading = true;
 
@@ -138,7 +139,7 @@ void OBSBasicSettings::LoadStream1Settings()
 	const char *bearer_token =
 		obs_data_get_string(settings, "bearer_token");
 
-	if (is_rtmp_custom || is_whip)
+	if (is_rtmp_custom || is_whip || is_vishare)
 		ui->customServer->setText(server);
 
 	if (is_rtmp_custom) {
@@ -230,10 +231,13 @@ void OBSBasicSettings::LoadStream1Settings()
 	if (use_custom_server)
 		ui->serviceCustomServer->setText(server);
 
-	if (is_whip)
+	if (is_vishare) {
+		//no operation
+	} else if (is_whip) {
 		ui->key->setText(bearer_token);
-	else
+	} else {
 		ui->key->setText(key);
+	}
 
 	ServiceChanged(true);
 
@@ -296,7 +300,7 @@ void OBSBasicSettings::SaveStream1Settings()
 
 	OBSDataAutoRelease settings = obs_data_create();
 
-	if (!customServer && !whip) {
+	if (!customServer && !whip && !vishare) {
 		obs_data_set_string(settings, "service",
 				    QT_TO_UTF8(ui->service->currentText()));
 		obs_data_set_string(settings, "protocol", QT_TO_UTF8(protocol));

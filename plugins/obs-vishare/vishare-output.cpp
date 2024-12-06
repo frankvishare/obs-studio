@@ -1,5 +1,10 @@
 #include "vishare-output.h"
 #include "vishare-utils.h"
+#ifdef ENABLE_HEVC
+#include "../obs-outputs/rtmp-hevc.h"
+#include <obs-hevc.h>
+#endif
+#include <algorithm>
 
 /*
  * Sets the maximum size for a video fragment. Effective range is
@@ -33,9 +38,9 @@ VISHAREOutput::VISHAREOutput(obs_data_t *, obs_output_t *output)
 	  start_stop_mutex(),
 	  start_stop_thread(),
 	  base_ssrc(generate_random_u32()),
-	  peer_connection(nullptr),
-	  audio_track(nullptr),
-	  video_track(nullptr),
+	  //peer_connection(nullptr),
+	  //audio_track(nullptr),
+	  //video_track(nullptr),
 	  total_bytes_sent(0),
 	  connect_time_ms(0),
 	  start_time_ns(0),
@@ -78,6 +83,23 @@ void VISHAREOutput::Stop(bool signal)
 	start_stop_thread = std::thread(&VISHAREOutput::StopThread, this, signal);
 }
 
+// SendPacket implementation. For UDP, it may need to split the packet.
+void VISHAREOutput::SendPacket(uint8_t *buf, size_t size){
+#if 1
+	send(sendSocket, (const char *)buf, (int)size, 0);
+#else
+	size_t packet_size = size;
+	const uint8_t *send_ptr = buf;
+	while (packet_size > 0) {
+		size_t send_packet_size = min(packet_size, 1024);
+		//sendto(sendSocket, (const char*)send_ptr, (int)send_packet_size, 0, (sockaddr*)&serverAddr, sizeof(serverAddr));
+		send(sendSocket, (const char*)send_ptr, (int)send_packet_size, 0);
+		send_ptr += send_packet_size;
+		packet_size -= send_packet_size;
+	}
+#endif
+}
+
 void VISHAREOutput::Data(struct encoder_packet *packet)
 {
 	if (!packet) {
@@ -86,15 +108,30 @@ void VISHAREOutput::Data(struct encoder_packet *packet)
 		return;
 	}
 
-	if (audio_track && packet->type == OBS_ENCODER_AUDIO) {
+
+	//struct encoder_packet new_packet;
+
+
+	if (/*audio_track && */packet->type == OBS_ENCODER_AUDIO) {
 		int64_t duration = packet->dts_usec - last_audio_timestamp;
+#if 1
+		//Send audio packet
+#else
 		Send(packet->data, packet->size, duration, audio_track,
 		     audio_sr_reporter);
+#endif
 		last_audio_timestamp = packet->dts_usec;
-	} else if (video_track && packet->type == OBS_ENCODER_VIDEO) {
+	} else if (/*video_track && */packet->type == OBS_ENCODER_VIDEO) {
 		int64_t duration = packet->dts_usec - last_video_timestamp;
+
+#if 1
+		//Send video packet
+		Send(packet->data, packet->size, duration);
+		
+#else
 		Send(packet->data, packet->size, duration, video_track,
 		     video_sr_reporter);
+#endif
 		last_video_timestamp = packet->dts_usec;
 	}
 }
@@ -107,7 +144,7 @@ void VISHAREOutput::ConfigureAudioTrack(std::string media_stream_id,
 		       "Not configuring audio track: Audio encoder not assigned");
 		return;
 	}
-
+#if 0
 	auto media_stream_track_id = std::string(media_stream_id + "-audio");
 
 	uint32_t ssrc = base_ssrc;
@@ -129,6 +166,7 @@ void VISHAREOutput::ConfigureAudioTrack(std::string media_stream_id,
 	packetizer->addToChain(audio_sr_reporter);
 	packetizer->addToChain(nack_responder);
 	audio_track->setMediaHandler(packetizer);
+#endif
 }
 
 void VISHAREOutput::ConfigureVideoTrack(std::string media_stream_id,
@@ -140,6 +178,7 @@ void VISHAREOutput::ConfigureVideoTrack(std::string media_stream_id,
 		return;
 	}
 
+#if 0
 	auto media_stream_track_id = std::string(media_stream_id + "-video");
 	std::shared_ptr<rtc::RtpPacketizer> packetizer;
 
@@ -172,16 +211,13 @@ void VISHAREOutput::ConfigureVideoTrack(std::string media_stream_id,
 			rtc::H265RtpPacketizer::Separator::StartSequence,
 			rtp_config, MAX_VIDEO_FRAGMENT_SIZE);
 #endif
-	} else if (strcmp("av1", codec) == 0) {
-		video_description.addAV1Codec(video_payload_type);
-		packetizer = std::make_shared<rtc::AV1RtpPacketizer>(
-			rtc::AV1RtpPacketizer::Packetization::TemporalUnit,
-			rtp_config, MAX_VIDEO_FRAGMENT_SIZE);
 	} else {
 		do_log(LOG_ERROR, "Video codec not supported: %s", codec);
 		return;
 	}
+#endif
 
+#if 0
 	video_sr_reporter = std::make_shared<rtc::RtcpSrReporter>(rtp_config);
 	packetizer->addToChain(video_sr_reporter);
 	packetizer->addToChain(std::make_shared<rtc::RtcpNackResponder>(
@@ -189,6 +225,7 @@ void VISHAREOutput::ConfigureVideoTrack(std::string media_stream_id,
 
 	video_track = peer_connection->addTrack(video_description);
 	video_track->setMediaHandler(packetizer);
+#endif
 }
 
 /**
@@ -224,6 +261,28 @@ bool VISHAREOutput::Init()
  */
 bool VISHAREOutput::Setup()
 {
+#if 1
+    //sendSocket = socket(AF_INET, SOCK_DGRAM, 0);
+	sendSocket = socket(AF_INET, SOCK_STREAM, 0);
+    if (sendSocket == INVALID_SOCKET) {
+        obs_output_signal_stop(output, OBS_OUTPUT_INVALID_STREAM);
+        WSACleanup();
+        return false;
+    }
+
+    // Setup server address structure
+	memset(&serverAddr, 0, sizeof(serverAddr)); // Clear the structure
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_port = htons(SEND_PORT_NUM);
+    if (inet_pton(AF_INET, endpoint_url.c_str(), &serverAddr.sin_addr) != 1){
+		obs_output_signal_stop(output, OBS_OUTPUT_BAD_PATH);
+		closesocket(sendSocket);
+		WSACleanup();
+	}
+
+    return true;
+
+#else
 	rtc::Configuration cfg;
 
 #if RTC_VERSION_MAJOR == 0 && RTC_VERSION_MINOR > 20 || RTC_VERSION_MAJOR > 1
@@ -286,12 +345,14 @@ bool VISHAREOutput::Setup()
 	peer_connection->setLocalDescription();
 
 	return true;
+#endif
 }
 
 // Given a Link header extract URL/Username/Credential and create rtc::IceServer
 // <turn:turn.example.net>; username="user"; credential="myPassword";
 //
 // https://www.ietf.org/archive/id/draft-ietf-wish-vishare-13.html#section-4.4
+#if 0
 void VISHAREOutput::ParseLinkHeader(std::string val,
 				 std::vector<rtc::IceServer> &iceServers)
 {
@@ -349,9 +410,20 @@ void VISHAREOutput::ParseLinkHeader(std::string val,
 		       val.c_str(), err.what());
 	}
 }
+#endif
 
 bool VISHAREOutput::Connect()
 {
+#if 1
+    // Connect to the server
+    if (connect(sendSocket, (struct sockaddr*)&serverAddr, sizeof(serverAddr)) < 0) {
+        closesocket(sendSocket);
+        obs_output_signal_stop(output, OBS_OUTPUT_CONNECT_FAILED);
+        WSACleanup();
+        return false;
+    }
+    return true;
+#else
 	struct curl_slist *headers = NULL;
 	headers = curl_slist_append(headers, "Content-Type: application/sdp");
 	if (!bearer_token.empty()) {
@@ -542,6 +614,7 @@ bool VISHAREOutput::Connect()
 #if RTC_VERSION_MAJOR == 0 && RTC_VERSION_MINOR > 20 || RTC_VERSION_MAJOR > 1
 	peer_connection->gatherLocalCandidates(iceServers);
 #endif
+#endif
 
 	return true;
 }
@@ -555,10 +628,10 @@ void VISHAREOutput::StartThread()
 		return;
 
 	if (!Connect()) {
-		peer_connection->close();
-		peer_connection = nullptr;
-		audio_track = nullptr;
-		video_track = nullptr;
+		//peer_connection->close();
+		//peer_connection = nullptr;
+		//audio_track = nullptr;
+		//video_track = nullptr;
 		return;
 	}
 
@@ -574,6 +647,7 @@ void VISHAREOutput::SendDelete()
 		return;
 	}
 
+#if 0
 	struct curl_slist *headers = NULL;
 	if (!bearer_token.empty()) {
 		auto bearer_token_header =
@@ -623,16 +697,19 @@ void VISHAREOutput::SendDelete()
 	       "Successfully performed DELETE request for resource URL");
 	resource_url.clear();
 	cleanup();
+#endif
 }
 
 void VISHAREOutput::StopThread(bool signal)
 {
+#if 0
 	if (peer_connection != nullptr) {
 		peer_connection->close();
 		peer_connection = nullptr;
 		audio_track = nullptr;
 		video_track = nullptr;
 	}
+#endif
 
 	SendDelete();
 
@@ -656,10 +733,22 @@ void VISHAREOutput::StopThread(bool signal)
 	last_video_timestamp = 0;
 }
 
+#if 1
+void VISHAREOutput::Send(void *data, uintptr_t size, uint64_t duration)
+#else
 void VISHAREOutput::Send(void *data, uintptr_t size, uint64_t duration,
 		      std::shared_ptr<rtc::Track> track,
 		      std::shared_ptr<rtc::RtcpSrReporter> rtcp_sr_reporter)
+#endif
 {
+#if 1
+	try {
+		SendPacket((uint8_t*)data, size);
+		total_bytes_sent += size;
+	} catch (const std::exception &e) {
+		do_log(LOG_ERROR, "error: %s ", e.what());
+	}
+#else
 	if (track == nullptr || !track->isOpen())
 		return;
 
@@ -670,6 +759,7 @@ void VISHAREOutput::Send(void *data, uintptr_t size, uint64_t duration,
 
 	// Sample time is in microseconds, we need to convert it to seconds
 	auto elapsed_seconds = double(duration) / (1000.0 * 1000.0);
+
 
 	// Get elapsed time in clock rate
 	uint32_t elapsed_timestamp =
@@ -693,17 +783,18 @@ void VISHAREOutput::Send(void *data, uintptr_t size, uint64_t duration,
 	} catch (const std::exception &e) {
 		do_log(LOG_ERROR, "error: %s ", e.what());
 	}
+#endif
 }
 
 void register_vishare_output()
 {
 	const uint32_t base_flags = OBS_OUTPUT_ENCODED | OBS_OUTPUT_SERVICE;
 
-	const char *audio_codecs = "opus";
+	const char *audio_codecs = "aac;opus";
 #ifdef ENABLE_HEVC
-	const char *video_codecs = "h264;hevc;av1";
+	const char *video_codecs = "hevc";
 #else
-	const char *video_codecs = "h264;av1";
+	const char *video_codecs = "";
 #endif
 
 	struct obs_output_info info = {};
