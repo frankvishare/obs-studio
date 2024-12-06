@@ -279,6 +279,7 @@ private:
 	void InitStreamPage();
 	bool IsCustomService() const;
 	inline bool IsWHIP() const;
+	inline bool IsVISHARE() const;
 	void LoadServices(bool showAll);
 	void OnOAuthStreamKeyConnected();
 	void OnAuthConnected();

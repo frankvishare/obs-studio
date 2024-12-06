@@ -61,6 +61,7 @@ if(OBS_CMAKE_VERSION VERSION_GREATER_EQUAL 3.0.0)
   add_obs_plugin(obs-transitions)
   add_obs_plugin(obs-vst PLATFORMS WINDOWS MACOS LINUX WITH_MESSAGE)
   add_obs_plugin(obs-webrtc)
+  add_obs_plugin(obs-vishare)
 
   check_obs_websocket()
 
@@ -168,3 +169,4 @@ add_subdirectory(rtmp-services)
 add_subdirectory(text-freetype2)
 add_subdirectory(aja)
 add_subdirectory(obs-webrtc)
+add_subdirectory(obs-vishare)

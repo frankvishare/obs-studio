@@ -38,6 +38,7 @@ enum class ListOpt : int {
 	ShowAll = 1,
 	Custom,
 	WHIP,
+	VISHARE
 };
 
 enum class Section : int {
@@ -53,6 +54,11 @@ bool OBSBasicSettings::IsCustomService() const
 inline bool OBSBasicSettings::IsWHIP() const
 {
 	return ui->service->currentData().toInt() == (int)ListOpt::WHIP;
+}
+
+inline bool OBSBasicSettings::IsVISHARE() const
+{
+	return ui->service->currentData().toInt() == (int)ListOpt::VISHARE;
 }
 
 void OBSBasicSettings::InitStreamPage()
@@ -274,12 +280,15 @@ void OBSBasicSettings::SaveStream1Settings()
 {
 	bool customServer = IsCustomService();
 	bool whip = IsWHIP();
+	bool vishare = IsVISHARE();
 	const char *service_id = "rtmp_common";
 
 	if (customServer) {
 		service_id = "rtmp_custom";
 	} else if (whip) {
 		service_id = "whip_custom";
+	} else if (vishare) {
+		service_id = "vishare_custom";
 	}
 
 	obs_service_t *oldService = main->GetService();
@@ -342,7 +351,13 @@ void OBSBasicSettings::SaveStream1Settings()
 		obs_data_set_string(settings, "service", "WHIP");
 		obs_data_set_string(settings, "bearer_token",
 				    QT_TO_UTF8(ui->key->text()));
-	} else {
+	} 
+	else if (vishare) {
+		obs_data_set_string(settings, "service", "VISHARE");
+		obs_data_set_string(settings, "bearer_token",
+				    QT_TO_UTF8(ui->key->text()));
+	} 
+	else {
 		obs_data_set_string(settings, "key",
 				    QT_TO_UTF8(ui->key->text()));
 	}
@@ -412,7 +427,7 @@ void OBSBasicSettings::SaveStream1Settings()
 
 void OBSBasicSettings::UpdateMoreInfoLink()
 {
-	if (IsCustomService() || IsWHIP()) {
+	if (IsCustomService() || IsWHIP() || IsVISHARE()) {
 		ui->moreInfoButton->hide();
 		return;
 	}
@@ -464,6 +479,10 @@ void OBSBasicSettings::UpdateKeyLink()
 			QTStr("Basic.AutoConfig.StreamPage.EncoderKey"));
 		ui->streamKeyLabel->setToolTip("");
 	} else if (IsWHIP()) {
+		ui->streamKeyLabel->setText(
+			QTStr("Basic.AutoConfig.StreamPage.BearerToken"));
+		ui->streamKeyLabel->setToolTip("");
+	} else if (IsVISHARE()) {
 		ui->streamKeyLabel->setText(
 			QTStr("Basic.AutoConfig.StreamPage.BearerToken"));
 		ui->streamKeyLabel->setToolTip("");
@@ -538,6 +557,11 @@ void OBSBasicSettings::LoadServices(bool showAll)
 	if (obs_is_output_protocol_registered("WHIP")) {
 		ui->service->addItem(QTStr("WHIP"),
 				     QVariant((int)ListOpt::WHIP));
+	}
+
+	if (obs_is_output_protocol_registered("VISHARE")) {
+		ui->service->addItem(QTStr("VISHARE"),
+				     QVariant((int)ListOpt::VISHARE));
 	}
 
 	if (!showAll) {
@@ -682,6 +706,7 @@ void OBSBasicSettings::ServiceChanged(bool resetFields)
 	std::string service = QT_TO_UTF8(ui->service->currentText());
 	bool custom = IsCustomService();
 	bool whip = IsWHIP();
+	bool vishare = IsVISHARE();
 
 	ui->disconnectAccount->setVisible(false);
 	ui->bandwidthTestEnable->setVisible(false);
@@ -702,7 +727,7 @@ void OBSBasicSettings::ServiceChanged(bool resetFields)
 	ui->authPwLabel->setVisible(custom);
 	ui->authPwWidget->setVisible(custom);
 
-	if (custom || whip) {
+	if (custom || whip || vishare) {
 		ui->destinationLayout->insertRow(1, ui->serverLabel,
 						 ui->serverStackedWidget);
 
@@ -837,12 +862,15 @@ OBSService OBSBasicSettings::SpawnTempService()
 {
 	bool custom = IsCustomService();
 	bool whip = IsWHIP();
+	bool vishare = IsVISHARE();
 	const char *service_id = "rtmp_common";
 
 	if (custom) {
 		service_id = "rtmp_custom";
 	} else if (whip) {
 		service_id = "whip_custom";
+	} else if (vishare) {
+		service_id = "vishare_custom";
 	}
 
 	OBSDataAutoRelease settings = obs_data_create();
